@@ -8,8 +8,6 @@
 # License: MIT
 #===============================================================================
 
-set -e
-
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -38,13 +36,12 @@ declare -A COLORS=(
 )
 
 # Statistics
-declare -A STATS=(
-    [total]=0
-    [success]=0
-    [failed]=0
-    [blocked]=0
-    [dga]=0
-)
+declare -A STATS
+STATS[total]=0
+STATS[success]=0
+STATS[failed]=0
+STATS[blocked]=0
+STATS[dga]=0
 
 #===============================================================================
 # Domain Categories
