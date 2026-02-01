@@ -1,0 +1,25 @@
+# Logs
+logs/
+*.log
+
+# Config files (may contain sensitive data)
+config/servers.conf
+
+# PID files
+*.pid
+
+# Stats
+stats.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+/tmp/
