@@ -122,37 +122,38 @@ get_pattern_script() {
     case $pattern in
         "heavy_normal")
             cat << 'EOF'
+#!/bin/bash
 while true; do
-    /tmp/dns-simulator.sh -p normal -c 50 -s DNS_SERVER
+    /tmp/dns-simulator.sh -p normal -c 80 -s DNS_SERVER
+    sleep 2
+    /tmp/dns-simulator.sh -p cdn -c 30 -s DNS_SERVER
     sleep 5
-    /tmp/dns-simulator.sh -p cdn -c 20 -s DNS_SERVER
-    sleep 10
 done
 EOF
             ;;
         "mixed_suspicious")
             cat << 'EOF'
+#!/bin/bash
 while true; do
-    /tmp/dns-simulator.sh -p normal -c 30 -s DNS_SERVER
+    /tmp/dns-simulator.sh -p suspicious -c 20 -s DNS_SERVER
+    sleep 1
+    /tmp/dns-simulator.sh -p dga -c 30 -s DNS_SERVER
+    sleep 2
+    /tmp/dns-simulator.sh -p blocked -c 15 -s DNS_SERVER
     sleep 3
-    /tmp/dns-simulator.sh -p suspicious -c 10 -s DNS_SERVER
-    sleep 5
-    /tmp/dns-simulator.sh -p dga -c 5 -s DNS_SERVER
-    sleep 5
-    /tmp/dns-simulator.sh -p blocked -c 5 -s DNS_SERVER
-    sleep 10
 done
 EOF
             ;;
         "burst_cdn")
             cat << 'EOF'
+#!/bin/bash
 while true; do
-    /tmp/dns-simulator.sh -p burst -c 100 -s DNS_SERVER
+    /tmp/dns-simulator.sh -p burst -c 150 -s DNS_SERVER
     sleep 30
-    /tmp/dns-simulator.sh -p cdn -c 50 -s DNS_SERVER
-    sleep 20
     /tmp/dns-simulator.sh -p normal -c 20 -s DNS_SERVER
     sleep 60
+    /tmp/dns-simulator.sh -p burst -c 200 -s DNS_SERVER
+    sleep 45
 done
 EOF
             ;;
