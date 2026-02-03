@@ -1,227 +1,203 @@
 # DNS Threat Simulator
 
-A professional DNS traffic simulation tool for testing and validating DNS security solutions. Generates realistic, diverse DNS traffic patterns including normal queries, suspicious domains, DGA (Domain Generation Algorithm) patterns, and blocked domain requests.
+Advanced DNS traffic generator for security testing and monitoring validation. Generates realistic, diverse DNS traffic patterns including normal queries, suspicious domains, DGA (Domain Generation Algorithm) patterns, and blocked domain requests.
 
 ## Features
 
-- **Multiple Traffic Patterns**: Normal, suspicious, DGA, burst, CDN, and blocked traffic
-- **Realistic Distribution**: Weighted random distributions mimicking real-world traffic
-- **Multi-Server Support**: Deploy and control simulators across multiple clients
-- **Configurable Parameters**: Adjustable query rates, patterns, and target servers
-- **Professional Logging**: Detailed logs for analysis and debugging
-- **Systemd Integration**: Run as a background service
-
-## Traffic Patterns
-
-| Pattern | Description | Use Case |
-|---------|-------------|----------|
-| `normal` | Popular domains (Google, Microsoft, etc.) | Baseline traffic |
-| `business` | Enterprise SaaS domains | Corporate environment simulation |
-| `suspicious` | Phishing, malware-like domains | Threat detection testing |
-| `dga` | Algorithmically generated domains | DGA detection testing |
-| `blocked` | Known ad/tracking domains | Blocklist testing |
-| `burst` | High-frequency short bursts | Spike detection testing |
-| `cdn` | CDN and static content domains | CDN traffic patterns |
-| `mixed` | Combination of all patterns | Comprehensive testing |
+- **Multiple Traffic Profiles**: Enterprise, Infected, Developer, Mixed
+- **Realistic DGA Generation**: Variable complexity domain generation algorithms
+- **Burst Traffic**: Random traffic bursts for anomaly detection testing
+- **Diverse Query Types**: A, AAAA, MX, TXT, CNAME, NS with realistic weights
+- **Multi-Server Deployment**: Deploy unique profiles to multiple servers
+- **Statistics Tracking**: Real-time query statistics and reporting
 
 ## Quick Start
 
-### Single Server
+```bash
+# Deploy to all servers
+./deploy.sh deploy
+
+# Start all simulators
+./deploy.sh start
+
+# Check status
+./deploy.sh status
+
+# View logs
+./deploy.sh logs
+
+# Stop all simulators
+./deploy.sh stop
+```
+
+## Server Profiles
+
+| Server | Profile | Description |
+|--------|---------|-------------|
+| 10.50.0.108 | `enterprise` | Heavy normal traffic (60%), CDN (25%), minimal threats |
+| 10.50.0.109 | `infected` | High DGA (35%), suspicious (30%), malware (8%) |
+| 10.50.0.110 | `developer` | Mixed traffic with varied patterns |
+
+## Traffic Profiles
+
+### Enterprise Profile
+- 60% Normal domains (google.com, microsoft.com, etc.)
+- 25% CDN traffic (cloudflare, jsdelivr, etc.)
+- 8% Ad networks
+- 5% Tracking services
+- 1.5% Suspicious domains
+- 0.5% DGA/Malware
+
+### Infected Profile
+- 35% DGA domains (algorithmically generated)
+- 30% Suspicious domains (phishing-like)
+- 20% Normal domains
+- 8% Malware domains
+- 5% CDN
+- 2% Ads/Tracking
+
+### Developer Profile
+- 45% Normal domains
+- 30% CDN (npm, jsdelivr, etc.)
+- 10% Tracking (analytics)
+- 5% Suspicious
+- 5% Ads
+- 5% DGA/Malware
+
+## Manual Usage
 
 ```bash
-# Clone the repository
-git clone https://github.com/e2esolutions-tech/dns-threat-simulator.git
-cd dns-threat-simulator
+# Run with specific profile
+python3 dns_simulator.py -p enterprise -s 10.50.0.30
 
-# Make executable
-chmod +x simulator.sh
+# Run batch of queries
+python3 dns_simulator.py -p infected -c 100
 
-# Run with default settings (mixed traffic for 60 seconds)
-./simulator.sh
+# Run for specific duration (seconds)
+python3 dns_simulator.py -p developer -d 300
+```
 
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-s, --server` | DNS server IP (default: 10.50.0.30) |
+| `-p, --profile` | Traffic profile: enterprise, infected, developer, mixed |
+| `-c, --count` | Number of queries (0 for continuous) |
+| `-d, --duration` | Duration in seconds (0 for unlimited) |
+
+## Legacy Bash Simulator
+
+The original bash-based simulator is still available:
+
+```bash
 # Run specific pattern
 ./simulator.sh --pattern normal --count 100
 ./simulator.sh --pattern suspicious --count 50
 ./simulator.sh --pattern mixed --duration 300
-```
 
-### Multi-Server Deployment
-
-```bash
-# Edit config file with your servers
-cp config/servers.example.conf config/servers.conf
-vim config/servers.conf
-
-# Deploy to all servers
-./deploy.sh
-
-# Start simulators on all servers
+# Multi-server control
 ./control.sh start
-
-# Check status
 ./control.sh status
-
-# Stop all
 ./control.sh stop
 ```
+
+## DGA Generation
+
+The simulator generates DGA-like domains with varying complexity:
+
+- **Low**: Simple random strings (8-12 chars)
+- **Medium**: Consonant-vowel patterns with numbers
+- **High**: MD5 hashes, base64-like strings, complex patterns
+
+Example generated domains:
+- `xkjh2sd9f3kdm.xyz`
+- `a3b7c9d2e5f8.com`
+- `vowelcons123mix.net`
+
+## Domain Categories
+
+| Category | Examples |
+|----------|----------|
+| Normal | google.com, github.com, microsoft.com |
+| CDN | cloudflare.com, jsdelivr.net, akamai.net |
+| Suspicious | free-prize-winner.com, urgent-update.net |
+| Malware | malware.testcategory.com |
+| Ads | doubleclick.net, googlesyndication.com |
+| Tracking | google-analytics.com, mixpanel.com |
+
+## Requirements
+
+- Python 3.6+
+- `dig` command (bind-utils / dnsutils)
+- SSH access to target servers
 
 ## Installation
 
 ### Prerequisites
 
-- Linux (RHEL/CentOS/Ubuntu/Debian)
-- `dig` command (bind-utils or dnsutils package)
-- SSH access for multi-server deployment
-
-### Install Dependencies
-
 ```bash
 # RHEL/CentOS
-sudo yum install -y bind-utils
+sudo yum install -y bind-utils python3
 
 # Ubuntu/Debian
-sudo apt-get install -y dnsutils
+sudo apt-get install -y dnsutils python3
 ```
 
-## Configuration
-
-### Environment Variables
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DNS_SERVER` | `10.50.0.30` | Target DNS server IP |
-| `LOG_FILE` | `/var/log/dns-simulator.log` | Log file path |
-| `QUERY_INTERVAL` | `1.0` | Base interval between queries (seconds) |
+| DNS_SERVER | 10.50.0.30 | Target DNS server |
+| SSH_USER | tempu | SSH username |
 
-### Server Configuration
+## Output
 
-Edit `config/servers.conf`:
-
-```ini
-[servers]
-client1 = 10.50.0.108
-client2 = 10.50.0.109
-client3 = 10.50.0.110
-
-[patterns]
-client1 = heavy_normal
-client2 = mixed_suspicious
-client3 = burst_cdn
-
-[ssh]
-user = tempu
-key_path = ~/.ssh/id_rsa
 ```
+[16:30:00] Starting DNS Simulator
+  Profile: infected
+  DNS Server: 10.50.0.30
+  Weights: {'normal': 20, 'cdn': 5, 'suspicious': 30, 'dga': 35, ...}
+--------------------------------------------------
+[16:30:05] BURST: 25 queries
+[16:30:10] Queries: 100 (18.5 q/s)
+[16:30:15] Queries: 200 (19.2 q/s)
+...
 
-## Usage Examples
-
-### Generate Normal Traffic
-```bash
-./simulator.sh --pattern normal --count 1000 --server 10.50.0.30
-```
-
-### Simulate DGA Attack
-```bash
-./simulator.sh --pattern dga --count 500 --interval 0.5
-```
-
-### Continuous Mixed Traffic
-```bash
-./simulator.sh --pattern continuous
-```
-
-### Custom Domain List
-```bash
-./simulator.sh --pattern custom --domains-file /path/to/domains.txt
-```
-
-## Systemd Service
-
-Install as a system service:
-
-```bash
-sudo ./install-service.sh
-
-# Start service
-sudo systemctl start dns-simulator
-
-# Enable on boot
-sudo systemctl enable dns-simulator
-
-# Check status
-sudo systemctl status dns-simulator
-```
-
-## Output and Logging
-
-### Log Format
-```
-2026-02-02 01:30:45 A google.com 0 OK 12ms
-2026-02-02 01:30:46 AAAA facebook.com 0 OK 8ms
-2026-02-02 01:30:47 A xk7jm9qw2p.tk 0 BLOCKED 3ms
-```
-
-### Statistics
-```bash
-# View real-time statistics
-./simulator.sh --stats
-
-# Generate report
-./simulator.sh --report
+==================================================
+DNS Simulator Statistics
+==================================================
+Profile: infected
+Duration: 120.5 seconds
+Total Queries: 2500
+Queries/Second: 20.75
+--------------------------------------------------
+  normal      :    512 ( 20.5%)
+  suspicious  :    745 ( 29.8%)
+  dga         :    892 ( 35.7%)
+  malware     :    198 (  7.9%)
+  cdn         :    153 (  6.1%)
+==================================================
 ```
 
 ## Architecture
 
 ```
 dns-threat-simulator/
-├── simulator.sh          # Main simulator script
-├── control.sh            # Multi-server control
-├── deploy.sh             # Deployment script
-├── install-service.sh    # Systemd installer
+├── dns_simulator.py      # Python-based simulator (v2.0)
+├── deploy.sh             # Multi-server deployment
+├── simulator.sh          # Legacy bash simulator
+├── control.sh            # Legacy multi-server control
 ├── config/
-│   ├── servers.conf      # Server configuration
-│   ├── domains/          # Domain lists by category
-│   │   ├── popular.txt
-│   │   ├── business.txt
-│   │   ├── suspicious.txt
-│   │   ├── dga.txt
-│   │   └── blocked.txt
-│   └── patterns/         # Traffic pattern definitions
-├── lib/
-│   ├── common.sh         # Common functions
-│   ├── patterns.sh       # Pattern generators
-│   └── distributions.sh  # Statistical distributions
-└── logs/                 # Log files
+│   └── servers.conf      # Server configuration
+└── README.md
 ```
-
-## Traffic Distribution
-
-The simulator uses weighted random distributions to create realistic traffic patterns:
-
-### Normal Traffic (default weights)
-- Popular domains: 50%
-- Business domains: 25%
-- Tech/API domains: 15%
-- CDN domains: 10%
-
-### Query Types (default weights)
-- A records: 75%
-- AAAA records: 15%
-- Other (MX, TXT, etc.): 10%
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Related Projects
 
 - [CortexDNS](https://github.com/e2esolutions-tech/cortexdns) - Enterprise DNS Management Platform
 - [Batin Intelligence](https://github.com/e2esolutions-tech/batin) - Domain Classification & DGA Detection
+
+## License
+
+MIT License - E2E Solutions 2026
