@@ -3,8 +3,12 @@
 DNS Threat Simulator - Advanced Traffic Generator
 Generates diverse DNS traffic patterns for security testing
 
+Each client IP automatically gets a unique traffic profile.
+Same IP = Same profile (deterministic)
+Different IPs = Different profiles (variety)
+
 Author: E2E Solutions
-Version: 2.0.0
+Version: 3.0.0
 """
 
 import subprocess
@@ -15,6 +19,7 @@ import argparse
 import signal
 import sys
 import hashlib
+import socket
 from datetime import datetime
 from typing import List, Dict, Tuple
 import json
@@ -81,12 +86,126 @@ QUERY_TYPES = {
     "NS": 2
 }
 
-class DNSSimulator:
-    """Advanced DNS Traffic Simulator"""
 
-    def __init__(self, dns_server: str = DNS_SERVER, profile: str = "mixed"):
+def get_local_ip() -> str:
+    """Get the primary local IP address"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+
+
+def generate_client_profile(client_ip: str) -> dict:
+    """
+    Generate a unique traffic profile based on client IP.
+    Same IP always gets the same profile (deterministic).
+    Different IPs get different distributions.
+    """
+    ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()
+
+    # Categories to distribute
+    categories = ["normal", "cdn", "suspicious", "dga", "malware", "ads", "tracking"]
+
+    # Generate weights based on IP hash
+    weights = {}
+    for i, cat in enumerate(categories):
+        # Extract 4 hex chars for each category
+        hex_segment = ip_hash[i*4:(i+1)*4]
+        base_value = int(hex_segment, 16) % 100
+        weights[cat] = max(1, base_value)  # Minimum 1%
+
+    # Find dominant category
+    dominant_cat = max(weights, key=weights.get)
+
+    # Boost dominant category (add 20-50%)
+    boost = 20 + (int(ip_hash[28:32], 16) % 30)
+    weights[dominant_cat] = min(80, weights[dominant_cat] + boost)
+
+    # Find secondary category
+    sorted_cats = sorted(weights.items(), key=lambda x: x[1], reverse=True)
+    secondary_cat = sorted_cats[1][0]
+
+    # Boost secondary (add 10-25%)
+    sec_boost = 10 + (int(ip_hash[32:36], 16) % 15)
+    weights[secondary_cat] = min(60, weights[secondary_cat] + sec_boost)
+
+    # Suppress 1-2 random categories
+    suppress_count = 1 + (int(ip_hash[36:38], 16) % 2)
+    suppressed = []
+    for cat in categories:
+        if cat not in [dominant_cat, secondary_cat] and len(suppressed) < suppress_count:
+            if int(ip_hash[38:40], 16) % 2 == 0:
+                weights[cat] = max(1, weights[cat] // 4)
+                suppressed.append(cat)
+
+    # Query interval based on IP
+    interval_seed = int(ip_hash[40:44], 16)
+    min_interval = 0.05 + (interval_seed % 20) / 100  # 0.05 - 0.25
+    max_interval = min_interval + 0.3 + (interval_seed % 50) / 100  # +0.3 to +0.8
+
+    # Burst probability
+    burst_seed = int(ip_hash[44:48], 16)
+    burst_prob = 0.05 + (burst_seed % 20) / 100  # 0.05 - 0.25
+
+    # DGA complexity based on dominant category
+    if dominant_cat in ["dga", "malware", "suspicious"]:
+        dga_complexity = "high"
+    elif dominant_cat in ["normal", "cdn"]:
+        dga_complexity = "low"
+    else:
+        dga_complexity = "medium"
+
+    return {
+        "client_ip": client_ip,
+        "profile_hash": ip_hash[:12],
+        "dominant": dominant_cat,
+        "secondary": secondary_cat,
+        "suppressed": suppressed,
+        "weights": weights,
+        "query_interval": (min_interval, max_interval),
+        "burst_probability": burst_prob,
+        "burst_size": (5, 25),
+        "dga_complexity": dga_complexity
+    }
+
+
+def print_client_profile(profile: dict):
+    """Print client profile in a visual format"""
+    print("")
+    print("+" + "="*58 + "+")
+    print("|  CLIENT PROFILE - Unique per IP                          |")
+    print("+" + "="*58 + "+")
+    print(f"|  Client IP: {profile['client_ip']:<44} |")
+    print(f"|  Profile Hash: {profile['profile_hash']:<41} |")
+    print(f"|  Dominant: {profile['dominant'].upper():<45} |")
+    print(f"|  Secondary: {profile['secondary'].upper():<44} |")
+    print("+" + "-"*58 + "+")
+    print("|  Category Weights:                                        |")
+
+    sorted_weights = sorted(profile['weights'].items(), key=lambda x: x[1], reverse=True)
+    for cat, weight in sorted_weights:
+        bar_len = weight // 4
+        bar = "#" * bar_len + "." * (20 - bar_len)
+        marker = " <DOM" if cat == profile['dominant'] else (" <SEC" if cat == profile['secondary'] else "")
+        print(f"|  {cat:<12} [{bar}] {weight:>3}%{marker:<5}|")
+
+    print("+" + "="*58 + "+")
+    print(f"|  Interval: {profile['query_interval'][0]:.2f}s - {profile['query_interval'][1]:.2f}s" + " "*26 + "|")
+    print(f"|  Burst Prob: {profile['burst_probability']*100:.1f}%  DGA: {profile['dga_complexity']:<25}|")
+    print("+" + "="*58 + "+")
+    print("")
+
+
+class DNSSimulator:
+    """Advanced DNS Traffic Simulator with Client-IP Based Profiles"""
+
+    def __init__(self, dns_server: str = DNS_SERVER, profile: str = "auto", client_ip: str = None):
         self.dns_server = dns_server
-        self.profile = profile
+        self.profile_name = profile
         self.running = True
         self.stats = {
             "total_queries": 0,
@@ -104,33 +223,48 @@ class DNSSimulator:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-        # Profile configurations - completely different for each server
-        self.profiles = {
-            # Server 1: Enterprise workstation - heavy normal traffic, some CDN
+        # Client IP and profile
+        self.client_ip = client_ip or get_local_ip()
+
+        if profile == "auto":
+            # Auto-generate profile based on client IP
+            self.client_profile = generate_client_profile(self.client_ip)
+            self.profile_config = {
+                "weights": self.client_profile["weights"],
+                "query_interval": self.client_profile["query_interval"],
+                "burst_probability": self.client_profile["burst_probability"],
+                "burst_size": self.client_profile["burst_size"],
+                "dga_complexity": self.client_profile["dga_complexity"]
+            }
+        else:
+            # Use predefined profile
+            self.client_profile = None
+            self.profile_config = self._get_predefined_profile(profile)
+
+    def _get_predefined_profile(self, profile: str) -> dict:
+        """Get predefined profile configuration"""
+        profiles = {
             "enterprise": {
                 "weights": {"normal": 60, "cdn": 25, "ads": 8, "tracking": 5, "suspicious": 1.5, "dga": 0.3, "malware": 0.2},
-                "query_interval": (0.1, 0.5),  # Fast, steady
+                "query_interval": (0.1, 0.5),
                 "burst_probability": 0.05,
                 "burst_size": (5, 15),
                 "dga_complexity": "low"
             },
-            # Server 2: Infected workstation - high suspicious/DGA traffic
             "infected": {
                 "weights": {"normal": 20, "cdn": 5, "suspicious": 30, "dga": 35, "malware": 8, "ads": 1, "tracking": 1},
-                "query_interval": (0.05, 0.3),  # Very fast, erratic
+                "query_interval": (0.05, 0.3),
                 "burst_probability": 0.2,
                 "burst_size": (10, 50),
                 "dga_complexity": "high"
             },
-            # Server 3: Developer workstation - mixed with lots of variety
             "developer": {
                 "weights": {"normal": 45, "cdn": 30, "ads": 5, "tracking": 10, "suspicious": 5, "dga": 3, "malware": 2},
-                "query_interval": (0.2, 1.0),  # Variable pace
+                "query_interval": (0.2, 1.0),
                 "burst_probability": 0.15,
                 "burst_size": (3, 20),
                 "dga_complexity": "medium"
             },
-            # Mixed profile
             "mixed": {
                 "weights": {"normal": 40, "cdn": 20, "suspicious": 15, "dga": 10, "malware": 5, "ads": 5, "tracking": 5},
                 "query_interval": (0.1, 0.8),
@@ -139,6 +273,7 @@ class DNSSimulator:
                 "dga_complexity": "medium"
             }
         }
+        return profiles.get(profile, profiles["mixed"])
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
@@ -155,12 +290,15 @@ class DNSSimulator:
         print("\n" + "="*50)
         print("DNS Simulator Statistics")
         print("="*50)
-        print(f"Profile: {self.profile}")
+        print(f"Client IP: {self.client_ip}")
+        print(f"Profile: {self.profile_name}")
+        if self.client_profile:
+            print(f"Dominant: {self.client_profile['dominant'].upper()}")
         print(f"Duration: {elapsed:.1f} seconds")
         print(f"Total Queries: {self.stats['total_queries']}")
         print(f"Queries/Second: {qps:.2f}")
         print("-"*50)
-        for category, count in self.stats.items():
+        for category, count in sorted(self.stats.items(), key=lambda x: x[1], reverse=True):
             if category != "total_queries" and count > 0:
                 pct = (count / self.stats["total_queries"] * 100) if self.stats["total_queries"] > 0 else 0
                 print(f"  {category:12}: {count:6} ({pct:5.1f}%)")
@@ -169,11 +307,9 @@ class DNSSimulator:
     def generate_dga_domain(self, complexity: str = "medium") -> str:
         """Generate a DGA-like domain"""
         if complexity == "low":
-            # Simple random string
             length = random.randint(8, 12)
             name = ''.join(random.choices(string.ascii_lowercase, k=length))
         elif complexity == "high":
-            # More sophisticated - mix of patterns
             patterns = [
                 lambda: ''.join(random.choices(string.ascii_lowercase + string.digits, k=random.randint(10, 20))),
                 lambda: hashlib.md5(str(time.time()).encode()).hexdigest()[:random.randint(12, 16)],
@@ -182,12 +318,10 @@ class DNSSimulator:
             ]
             name = random.choice(patterns)()
         else:
-            # Medium complexity
             consonants = 'bcdfghjklmnpqrstvwxz'
             vowels = 'aeiou'
             length = random.randint(10, 16)
             name = ''.join([random.choice(consonants if i % 2 == 0 else vowels) for i in range(length)])
-            # Add some randomness
             if random.random() > 0.5:
                 name = name[:random.randint(3, 6)] + str(random.randint(0, 999)) + name[random.randint(6, 10):]
 
@@ -197,8 +331,7 @@ class DNSSimulator:
     def get_random_domain(self, category: str) -> str:
         """Get a random domain from category or generate one"""
         if category == "dga":
-            config = self.profiles.get(self.profile, self.profiles["mixed"])
-            return self.generate_dga_domain(config.get("dga_complexity", "medium"))
+            return self.generate_dga_domain(self.profile_config.get("dga_complexity", "medium"))
         elif category in DOMAINS:
             return random.choice(DOMAINS[category])
         else:
@@ -212,14 +345,11 @@ class DNSSimulator:
 
     def select_category(self) -> str:
         """Select a category based on profile weights"""
-        config = self.profiles.get(self.profile, self.profiles["mixed"])
-        weights = config["weights"]
-
+        weights = self.profile_config["weights"]
         categories = list(weights.keys())
         probs = list(weights.values())
         total = sum(probs)
         probs = [p/total for p in probs]
-
         return random.choices(categories, weights=probs, k=1)[0]
 
     def send_query(self, domain: str, query_type: str = "A") -> bool:
@@ -233,12 +363,15 @@ class DNSSimulator:
 
     def run_continuous(self):
         """Run continuous traffic generation"""
-        config = self.profiles.get(self.profile, self.profiles["mixed"])
+        config = self.profile_config
 
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting DNS Simulator")
-        print(f"  Profile: {self.profile}")
+        print(f"  Client IP: {self.client_ip}")
+        print(f"  Profile: {self.profile_name}")
+        if self.client_profile:
+            print(f"  Dominant: {self.client_profile['dominant'].upper()}")
+            print(f"  Secondary: {self.client_profile['secondary'].upper()}")
         print(f"  DNS Server: {self.dns_server}")
-        print(f"  Weights: {config['weights']}")
         print("-" * 50)
 
         while self.running:
@@ -271,7 +404,8 @@ class DNSSimulator:
                 if self.stats["total_queries"] % 100 == 0:
                     elapsed = (datetime.now() - self.start_time).total_seconds()
                     qps = self.stats["total_queries"] / elapsed
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Queries: {self.stats['total_queries']} ({qps:.1f} q/s)")
+                    dominant_cat = self.client_profile['dominant'] if self.client_profile else "N/A"
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Queries: {self.stats['total_queries']} ({qps:.1f} q/s) [DOM: {dominant_cat}]")
 
                 # Wait interval
                 interval = random.uniform(*config["query_interval"])
@@ -287,9 +421,12 @@ class DNSSimulator:
 
     def run_batch(self, count: int):
         """Run a batch of queries"""
-        config = self.profiles.get(self.profile, self.profiles["mixed"])
+        config = self.profile_config
 
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending {count} queries (profile: {self.profile})")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Sending {count} queries")
+        print(f"  Client IP: {self.client_ip}")
+        if self.client_profile:
+            print(f"  Dominant: {self.client_profile['dominant'].upper()}")
 
         for i in range(count):
             if not self.running:
@@ -318,25 +455,38 @@ def base64_like_string(length: int) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="DNS Threat Simulator")
+    parser = argparse.ArgumentParser(description="DNS Threat Simulator v3.0 - Client Profile Mode")
     parser.add_argument("-s", "--server", default=DNS_SERVER, help="DNS server IP")
-    parser.add_argument("-p", "--profile", default="mixed",
-                       choices=["enterprise", "infected", "developer", "mixed"],
-                       help="Traffic profile")
+    parser.add_argument("-p", "--profile", default="auto",
+                       choices=["auto", "enterprise", "infected", "developer", "mixed"],
+                       help="Traffic profile (auto = based on client IP)")
     parser.add_argument("-c", "--count", type=int, default=0,
                        help="Number of queries (0 for continuous)")
     parser.add_argument("-d", "--duration", type=int, default=0,
                        help="Duration in seconds (0 for unlimited)")
+    parser.add_argument("--client-ip", default=None,
+                       help="Override client IP for profile generation")
+    parser.add_argument("--show-profile", action="store_true",
+                       help="Show generated profile and exit")
 
     args = parser.parse_args()
 
-    simulator = DNSSimulator(dns_server=args.server, profile=args.profile)
+    # Get client IP
+    client_ip = args.client_ip or get_local_ip()
+
+    # Show profile mode
+    if args.show_profile or args.profile == "auto":
+        profile = generate_client_profile(client_ip)
+        print_client_profile(profile)
+        if args.show_profile:
+            sys.exit(0)
+
+    simulator = DNSSimulator(dns_server=args.server, profile=args.profile, client_ip=client_ip)
 
     if args.count > 0:
         simulator.run_batch(args.count)
     else:
         if args.duration > 0:
-            # Run with duration limit
             def timeout_handler(signum, frame):
                 simulator.running = False
             signal.signal(signal.SIGALRM, timeout_handler)
